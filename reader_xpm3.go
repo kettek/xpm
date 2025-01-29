@@ -69,30 +69,60 @@ func (d *decoder) parseXPM3Metadata() error {
 	}
 	// Read our color entries.
 	for i := 0; i < header.nColors; i++ {
-		clr := XPM3Color{}
+		xclr := XPM3Color{}
 		d.scanner.Scan()
 		token := d.scanner.Text()
 		token = strings.TrimPrefix(token, "\"")
 		token = strings.TrimSuffix(token, "\",")
-		values := strings.Split(token, " ")
-		if len(values) < 3 {
-			return FormatError("too few values in XPM3 color entry")
+
+		swatch := ""
+		var kind rune
+		clr := ""
+		foundSwatch := false
+		foundKind := false
+		for i, r := range token {
+			if !foundSwatch {
+				if (r == ' ' && i != 0) || r == '\t' {
+					foundSwatch = true
+					continue
+				}
+				swatch += string(r)
+			} else if !foundKind {
+				if r == ' ' || r == '\t' {
+					foundKind = true
+					continue
+				}
+				kind = r
+			} else {
+				if r == ' ' || r == '\t' || r == '\n' {
+					break
+				}
+				clr += string(r)
+			}
 		}
-		if len(values[0]) != header.cPP {
+
+		if !foundSwatch || !foundKind {
+			return FormatError("invalid XPM3 color entry")
+		}
+		if clr == "" {
+			return FormatError("invalid XPM3 color entry")
+		}
+
+		if len(swatch) != header.cPP {
 			return FormatError("invalid characters per pixel in XPM3 color entry")
 		}
-		clr.Chars = values[0]
-		switch values[1] {
-		case "c":
-			clr.Kind = XPM3ColorKindColor
-			if values[2][0] == '#' {
+		xclr.Chars = swatch
+		switch kind {
+		case 'c':
+			xclr.Kind = XPM3ColorKindColor
+			if clr[0] == '#' {
 				// Read RGB hex.
-				if len(values[2]) != 7 {
+				if len(clr) != 7 {
 					return FormatError("invalid hex color in XPM3 color entry")
 				}
-				r := values[2][1:3]
-				g := values[2][3:5]
-				b := values[2][5:7]
+				r := clr[1:3]
+				g := clr[3:5]
+				b := clr[5:7]
 				red, err := strconv.ParseUint(r, 16, 8)
 				if err != nil {
 					return FormatError("invalid red value in XPM3 color entry")
@@ -105,29 +135,29 @@ func (d *decoder) parseXPM3Metadata() error {
 				if err != nil {
 					return FormatError("invalid blue value in XPM3 color entry")
 				}
-				clr.Color = color.NRGBA{uint8(red), uint8(green), uint8(blue), 0xff}
-			} else if values[2] == "None" {
-				clr.Color = color.NRGBA{0, 0, 0, 0}
+				xclr.Color = color.NRGBA{uint8(red), uint8(green), uint8(blue), 0xff}
+			} else if clr == "None" {
+				xclr.Color = color.NRGBA{0, 0, 0, 0}
 			} else {
-				x11color, exists := x11colors.GetByName(values[2])
+				x11color, exists := x11colors.GetByName(clr)
 				if !exists {
 					return FormatError("invalid X11 color name in XPM3 color entry")
 				}
-				clr.Color = color.NRGBA{x11color.RGBA.R, x11color.RGBA.G, x11color.RGBA.B, 0xff}
+				xclr.Color = color.NRGBA{x11color.RGBA.R, x11color.RGBA.G, x11color.RGBA.B, 0xff}
 			}
-		case "m":
-			clr.Kind = XPM3ColorKindMonochrome
+		case 'm':
+			xclr.Kind = XPM3ColorKindMonochrome
 			return FormatError("XPM3 monochrome color not implemented")
-		case "g":
-			clr.Kind = XPM3ColorKindGrayscale
+		case 'g':
+			xclr.Kind = XPM3ColorKindGrayscale
 			return FormatError("XPM3 grayscale color not implemented")
-		case "s":
-			clr.Kind = XPM3ColorKindSymbolic
+		case 's':
+			xclr.Kind = XPM3ColorKindSymbolic
 			return FormatError("XPM3 symbolic color not implemented")
 		default:
 			return FormatError("invalid color kind in XPM3 color entry")
 		}
-		header.colors = append(header.colors, clr)
+		header.colors = append(header.colors, xclr)
 	}
 
 	d.xpmHeader = header
@@ -136,7 +166,7 @@ func (d *decoder) parseXPM3Metadata() error {
 }
 
 func (d *decoder) parseXPM3Pixels() error {
-	header := d.xpmHeader.(*XPM3Header)
+	header := d.xpmHeader.(XPM3Header)
 
 	img := image.NewNRGBA(image.Rect(0, 0, header.width, header.height))
 
@@ -144,27 +174,31 @@ func (d *decoder) parseXPM3Pixels() error {
 	for d.scanner.Scan() {
 		token := d.scanner.Text()
 
-		if strings.HasPrefix(token, "};") { // Bail once we reach closing block.
-			break
-		}
-		// Tidy up quotations and commas.
-		token = strings.TrimPrefix(token, "\"")
-		token = strings.TrimSuffix(token, "\",") // This might break things...
-		token = strings.TrimSuffix(token, "\"")
-
-		// Step thru according to cPP
+		inDef := false
 		x := 0
 		for i := 0; i < len(token); i += header.cPP {
-			key := token[i : i+header.cPP]
-			color := header.XPM3Color(key)
+			r := token[i]
+			if !inDef {
+				if r == '"' {
+					inDef = true
+					continue
+				}
+			}
+			if r == '"' && token[i-1] != '\\' {
+				break
+			}
+			entry := token[i : i+header.cPP]
+			color := header.XPM3Color(entry)
 			if color == nil {
-				return FormatError("invalid color key in XPM3 pixel data")
+				return FormatError("invalid color entry in XPM3 pixels")
 			}
 			img.Set(x, y, color.Color)
 			x++
 		}
 		y++
 	}
+
+	d.image = img
 
 	return nil
 }

@@ -124,7 +124,7 @@ func DecodeConfig(r io.Reader) (image.Config, error) {
 }
 
 func init() {
-	image.RegisterFormat("xpm", "#define", Decode, DecodeConfig)   // XPM1
-	image.RegisterFormat("xpm", "! XPM2", Decode, DecodeConfig)    // XPM2
+	//image.RegisterFormat("xpm", "#define", Decode, DecodeConfig)   // XPM1
+	//image.RegisterFormat("xpm", "! XPM2", Decode, DecodeConfig)    // XPM2
 	image.RegisterFormat("xpm", "/* XPM */", Decode, DecodeConfig) // XPM3
 }
