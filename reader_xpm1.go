@@ -25,7 +25,7 @@ func (d *decoder) parseXPM1Metadata() error {
 	if err != nil {
 		return err
 	}
-	xpmHeader.format = uint8(formatValue)
+	xpmHeader.format = formatValue
 	// Now get the rest of our defines.
 	for d.scanner.Scan() {
 		token := d.scanner.Text()
@@ -40,16 +40,16 @@ func (d *decoder) parseXPM1Metadata() error {
 			}
 
 			if lastSeen == seenFormat {
-				xpmHeader.width = uint(value)
+				xpmHeader.width = value
 				lastSeen = seenWidth
 			} else if lastSeen == seenWidth {
-				xpmHeader.height = uint(value)
+				xpmHeader.height = value
 				lastSeen = seenHeight
 			} else if lastSeen == seenHeight {
-				xpmHeader.nColors = uint(value)
+				xpmHeader.nColors = value
 				lastSeen = seenNColors
 			} else if lastSeen == seenNColors {
-				xpmHeader.cPP = uint8(value)
+				xpmHeader.cPP = value
 				d.xpmHeader = xpmHeader
 				lastSeen = seenCharsPerPixel
 				// End of header, move on!
@@ -62,5 +62,8 @@ func (d *decoder) parseXPM1Metadata() error {
 	if err := d.scanner.Err(); err != nil {
 		return err
 	}
+
+	d.xpmHeader = xpmHeader
+
 	return nil
 }

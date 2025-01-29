@@ -2,6 +2,7 @@ package xpm
 
 import (
 	"bufio"
+	"errors"
 	"image"
 	"io"
 	"strings"
@@ -78,6 +79,14 @@ func (d *decoder) parseMetadata() error {
 }
 
 func (d *decoder) parsePixels() error {
+	if d.xpmType == XPM1 {
+		return errors.New("XPM1 pixel parsing not implemented")
+	} else if d.xpmType == XPM2 {
+		return errors.New("XPM2 pixel parsing not implemented")
+	} else if d.xpmType == XPM3 {
+		return d.parseXPM3Pixels()
+	}
+
 	return nil
 }
 
@@ -108,7 +117,9 @@ func DecodeConfig(r io.Reader) (image.Config, error) {
 		return image.Config{}, err
 	}
 	return image.Config{
-		// TODO
+		Width:      d.xpmHeader.Width(),
+		Height:     d.xpmHeader.Height(),
+		ColorModel: d.xpmHeader.ColorModel(),
 	}, nil
 }
 
